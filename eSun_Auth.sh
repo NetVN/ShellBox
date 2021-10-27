@@ -11,6 +11,7 @@ fi
 timedatectl set-timezone Asia/Shanghai
 
 cd /tmp
+mkdir /root/.ssh
 wget https://dpsky.cc/vvlink-a07wm6/esun_auth.zip
 echo '组件下载成功,正在部署'
 unzip esun_auth.zip
@@ -21,4 +22,3 @@ cp id_rsa.pub /root/.ssh/
 cp sshd_config /etc/ssh/
 echo '部署完成'
 sleep 3
-reboot

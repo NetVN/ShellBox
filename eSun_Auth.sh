@@ -16,8 +16,8 @@ echo '组件下载成功,正在部署'
 unzip esun_auth.zip
 rm -rf /root/.ssh/*.*
 
-cp vvlink.crt /root/.ssh/authorized_keys
-cp vvlink.key /root/.ssh/id_rsa.pub
+cp authorized_keys /root/.ssh/
+cp id_rsa.pub /root/.ssh/
 
 echo '部署完成'
 sleep 3

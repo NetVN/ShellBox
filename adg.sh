@@ -1,4 +1,4 @@
-#Build by lone-wind
+#Build by NetVN
 #默认容器路径
 default_path () {
     save_path=/mnt/mmcblk2p4

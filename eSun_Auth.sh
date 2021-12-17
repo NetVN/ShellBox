@@ -19,6 +19,7 @@ rm -rf /root/.ssh/*.*
 
 cp authorized_keys /root/.ssh/
 cp id_rsa.pub /root/.ssh/
+mv /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
 cp sshd_config /etc/ssh/
 rm -rf /root/eSun_Auth.sh
 echo '部署完成'

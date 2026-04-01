@@ -123,37 +123,10 @@ RAW_OUT=$("$OUTLINE_SCRIPT" \
 
 log "install_server.sh 原始输出：$RAW_OUT"
 
-# ================================
-# 解析 install_server.sh 输出
-# ================================
-parse_outline_output() {
-    local INPUT="$1"
-
-    # 1) 直接是 JSON
-    if echo "$INPUT" | jq . >/dev/null 2>&1; then
-        echo "$INPUT"
-        return 0
-    fi
-
-    # 2) YAML → JSON
-    local CERT=$(echo "$INPUT" | grep certSha256 | cut -d':' -f2- | xargs)
-    local API=$(echo "$INPUT" | grep apiUrl | cut -d':' -f2- | xargs)
-
-    if [ -n "$CERT" ] && [ -n "$API" ]; then
-        jq -n --arg api "$API" --arg cert "$CERT" \
-            '{apiUrl:$api, certSha256:$cert}'
-        return 0
-    fi
-
-    return 1
-}
-
-# 尝试解析 install_server.sh 输出
+# 调用解析器
 OUT_JSON=$(parse_outline_output "$RAW_OUT")
 
-# ================================
-# 如果解析失败 → fallback 到 access.txt
-# ================================
+# 如果解析失败 → fallback
 if [ $? -ne 0 ] || [ -z "$OUT_JSON" ]; then
     warn "install_server.sh 输出无法解析，尝试读取 /opt/outline/access.txt ..."
 
@@ -177,15 +150,14 @@ log "解析后的 JSON：$OUT_JSON"
 # 写入 IPv4 JSON
 echo "$OUT_JSON" > "$API_CONF"
 
-# ================================
 # 生成 IPv6 JSON
-# ================================
 NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" \
     '.apiUrl |= sub("https://[^/]*"; "https://\($h)")')
 
 echo "$NEW_JSON" >> "$API_CONF"
 
 success "api.conf 已生成：$API_CONF"
+cat "$API_CONF"
 
 
 # 部署 SSH 密钥

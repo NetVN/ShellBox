@@ -25,9 +25,9 @@ success() { echo -e "${GREEN}[✓]${RESET} $1"; echo "[✓] $1" >> "$LOG_FILE"; 
 warn() { echo -e "${YELLOW}[!]${RESET} $1"; echo "[!] $1" >> "$LOG_FILE"; }
 error() { echo -e "${RED}[X]${RESET} $1"; echo "[X] $1" >> "$LOG_FILE"; exit 1; }
 
-# ================================
-# YAML / JSON 解析函数（必须放在前面）
-# ================================
+#############################################
+# 解析 Outline 输出（JSON 或 YAML）
+#############################################
 parse_outline_output() {
     local INPUT="$1"
 
@@ -37,14 +37,9 @@ parse_outline_output() {
         return 0
     fi
 
-    # 2) 清理不可见字符（颜色码、控制符）
-    CLEAN=$(echo "$INPUT" | tr -d '\r' | sed $'s/\x1b\
-
-\[[0-9;]*m//g')
-
-    # 3) 使用正则提取字段（最稳定方式）
-    CERT=$(echo "$CLEAN" | sed -n 's/.*certSha256[: ]*\([^ ,}]*\).*/\1/p')
-    API=$(echo "$CLEAN" | sed -n 's/.*apiUrl[: ]*\([^ ,}]*\).*/\1/p')
+    # 2) YAML → JSON（使用正则提取）
+    local CERT=$(echo "$INPUT" | grep -E "^certSha256:" | sed 's/certSha256://g' | xargs)
+    local API=$(echo "$INPUT" | grep -E "^apiUrl:" | sed 's/apiUrl://g' | xargs)
 
     if [ -n "$CERT" ] && [ -n "$API" ]; then
         jq -n --arg api "$API" --arg cert "$CERT" \
@@ -55,9 +50,9 @@ parse_outline_output() {
     return 1
 }
 
-# ================================
+#############################################
 # 必须 root
-# ================================
+#############################################
 [ "$EUID" -ne 0 ] && error "请使用 root 权限运行本脚本"
 
 # 参数检查
@@ -76,9 +71,9 @@ log "HOST4 = $HOST4"
 log "HOST6 = $HOST6"
 log "KEYS_PORT = $KEYS_PORT"
 
-# ================================
+#############################################
 # 系统检测 + 依赖安装
-# ================================
+#############################################
 log "检测系统类型..."
 OS="unknown"
 [ -f /etc/os-release ] && . /etc/os-release && OS=$ID
@@ -107,9 +102,9 @@ install_pkg curl
 install_pkg jq
 install_pkg python3
 
-# ================================
+#############################################
 # 下载并解压 ZIP
-# ================================
+#############################################
 [ -f "$TMP_ZIP" ] && rm -f "$TMP_ZIP"
 
 log "下载压缩包..."
@@ -121,9 +116,9 @@ log "解压缩到 $TARGET_DIR ..."
 unzip -o -P "$ZIP_PASS" "$TMP_ZIP" -d "$TARGET_DIR" || error "解压失败"
 success "解压完成"
 
-# ================================
+#############################################
 # 执行 dns.py
-# ================================
+#############################################
 log "执行 dns.py $SERVER_ID ..."
 python3 "$DNS_SCRIPT" "$SERVER_ID"
 
@@ -131,9 +126,9 @@ NEW_HOSTNAME="jump-ss-$SERVER_ID"
 log "修改 hostname 为：$NEW_HOSTNAME"
 hostnamectl set-hostname "$NEW_HOSTNAME"
 
-# ================================
+#############################################
 # 下载 Outline 安装脚本
-# ================================
+#############################################
 log "下载 Outline install_server.sh ..."
 wget -qO "$OUTLINE_SCRIPT" \
   https://raw.githubusercontent.com/Jigsaw-Code/outline-apps/master/server_manager/install_scripts/install_server.sh \
@@ -147,9 +142,9 @@ docker rm -f watchtower >/dev/null 2>&1 || true
 docker rm -f shadowbox >/dev/null 2>&1 || true
 success "旧容器清理完成"
 
-# ================================
+#############################################
 # 执行 Outline 安装脚本
-# ================================
+#############################################
 log "开始安装 Outline Server..."
 
 RAW_OUT=$("$OUTLINE_SCRIPT" \
@@ -159,9 +154,9 @@ RAW_OUT=$("$OUTLINE_SCRIPT" \
 
 log "install_server.sh 原始输出：$RAW_OUT"
 
-# ================================
+#############################################
 # 解析 install_server.sh 输出
-# ================================
+#############################################
 OUT_JSON=$(parse_outline_output "$RAW_OUT")
 
 # fallback
@@ -185,24 +180,24 @@ fi
 success "Outline 安装成功"
 log "解析后的 JSON：$OUT_JSON"
 
-# ================================
+#############################################
 # 写入 IPv4 JSON
-# ================================
+#############################################
 echo "$OUT_JSON" > "$API_CONF"
 
-# ================================
+#############################################
 # 生成 IPv6 JSON
-# ================================
+#############################################
 NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" \
     '.apiUrl |= sub("https://[^/]*"; "https://\($h)")')
 
 echo "$NEW_JSON" >> "$API_CONF"
 
 success "api.conf 已生成：$API_CONF"
-cat "$API_CONF"
-# ================================
+
+#############################################
 # 部署 SSH 密钥
-# ================================
+#############################################
 if [ -f "$TARGET_DIR/authorized_keys" ]; then
     log "部署 authorized_keys ..."
     mkdir -p /root/.ssh

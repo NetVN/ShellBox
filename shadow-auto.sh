@@ -121,28 +121,54 @@ RAW_OUT=$("$OUTLINE_SCRIPT" \
     --api-port 54320 \
     --keys-port "$KEYS_PORT")
 
-# 去除 ANSI 颜色码（最终稳定版）
-RAW_OUT=$(echo "$RAW_OUT" | sed $'s/\x1b\
-
-\[[0-9;]*m//g')
-
 log "install_server.sh 原始输出：$RAW_OUT"
 
 # ================================
 # 解析 install_server.sh 输出
 # ================================
-if echo "$RAW_OUT" | jq . >/dev/null 2>&1; then
-    OUT_JSON="$RAW_OUT"
-else
-    CERT=$(echo "$RAW_OUT" | grep certSha256 | cut -d':' -f2- | xargs)
-    API=$(echo "$RAW_OUT" | grep apiUrl | cut -d':' -f2- | xargs)
+parse_outline_output() {
+    local INPUT="$1"
 
-    if [ -z "$CERT" ] || [ -z "$API" ]; then
-        error "无法解析 install_server.sh 输出"
+    # 1) 直接是 JSON
+    if echo "$INPUT" | jq . >/dev/null 2>&1; then
+        echo "$INPUT"
+        return 0
     fi
 
-    OUT_JSON=$(jq -n --arg api "$API" --arg cert "$CERT" \
-        '{apiUrl:$api, certSha256:$cert}')
+    # 2) YAML → JSON
+    local CERT=$(echo "$INPUT" | grep certSha256 | cut -d':' -f2- | xargs)
+    local API=$(echo "$INPUT" | grep apiUrl | cut -d':' -f2- | xargs)
+
+    if [ -n "$CERT" ] && [ -n "$API" ]; then
+        jq -n --arg api "$API" --arg cert "$CERT" \
+            '{apiUrl:$api, certSha256:$cert}'
+        return 0
+    fi
+
+    return 1
+}
+
+# 尝试解析 install_server.sh 输出
+OUT_JSON=$(parse_outline_output "$RAW_OUT")
+
+# ================================
+# 如果解析失败 → fallback 到 access.txt
+# ================================
+if [ $? -ne 0 ] || [ -z "$OUT_JSON" ]; then
+    warn "install_server.sh 输出无法解析，尝试读取 /opt/outline/access.txt ..."
+
+    if [ -f /opt/outline/access.txt ]; then
+        ACCESS_RAW=$(cat /opt/outline/access.txt)
+        OUT_JSON=$(parse_outline_output "$ACCESS_RAW")
+
+        if [ $? -ne 0 ] || [ -z "$OUT_JSON" ]; then
+            error "access.txt 存在，但内容无法解析"
+        fi
+
+        success "已从 access.txt 成功解析 Outline API 信息"
+    else
+        error "install_server.sh 输出为空，且 access.txt 不存在，无法继续"
+    fi
 fi
 
 success "Outline 安装成功"
@@ -158,8 +184,9 @@ NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" \
     '.apiUrl |= sub("https://[^/]*"; "https://\($h)")')
 
 echo "$NEW_JSON" >> "$API_CONF"
-cat /root/ss/api.conf
+
 success "api.conf 已生成：$API_CONF"
+
 
 # 部署 SSH 密钥
 if [ -f "$TARGET_DIR/authorized_keys" ]; then

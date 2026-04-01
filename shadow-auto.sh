@@ -1,4 +1,6 @@
 #!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
 
 #############################################
 #   专业级一键部署脚本 ss.sh

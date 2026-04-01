@@ -111,7 +111,9 @@ docker rm -f watchtower >/dev/null 2>&1 || true
 docker rm -f shadowbox >/dev/null 2>&1 || true
 success "旧容器清理完成"
 
-# 执行 Outline 安装
+# ================================
+# 执行 Outline 安装脚本
+# ================================
 log "开始安装 Outline Server..."
 
 RAW_OUT=$("$OUTLINE_SCRIPT" \
@@ -119,20 +121,31 @@ RAW_OUT=$("$OUTLINE_SCRIPT" \
     --api-port 54320 \
     --keys-port "$KEYS_PORT")
 
+# 去除 ANSI 颜色码（非常关键）
+RAW_OUT=$(echo "$RAW_OUT" | sed 's/\x1b
+
+\[[0-9;]*m//g')
+
 log "install_server.sh 原始输出：$RAW_OUT"
 
-# 解析输出（JSON 或 YAML）
+# ================================
+# 解析 install_server.sh 输出
+# ================================
 if echo "$RAW_OUT" | jq . >/dev/null 2>&1; then
+    # 直接是 JSON
     OUT_JSON="$RAW_OUT"
 else
-    CERT=$(echo "$RAW_OUT" | grep certSha256 | cut -d':' -f2)
-    API=$(echo "$RAW_OUT" | grep apiUrl | cut -d':' -f2-)
+    # YAML → JSON
+    CERT=$(echo "$RAW_OUT" | grep certSha256 | cut -d':' -f2- | xargs)
+    API=$(echo "$RAW_OUT" | grep apiUrl | cut -d':' -f2- | xargs)
 
-    [ -z "$CERT" ] && error "无法解析 certSha256"
-    [ -z "$API" ] && error "无法解析 apiUrl"
+    if [ -z "$CERT" ] || [ -z "$API" ]; then
+        error "无法解析 install_server.sh 输出"
+    fi
 
-    OUT_JSON=$(jq -n --arg a "$API" --arg c "$CERT" \
-        '{apiUrl:$a, certSha256:$c}')
+    # 构造真正的 JSON（不会带引号污染）
+    OUT_JSON=$(jq -n --arg api "$API" --arg cert "$CERT" \
+        '{apiUrl:$api, certSha256:$cert}')
 fi
 
 success "Outline 安装成功"
@@ -141,13 +154,16 @@ log "解析后的 JSON：$OUT_JSON"
 # 写入 IPv4 JSON
 echo "$OUT_JSON" > "$API_CONF"
 
+# ================================
 # 生成 IPv6 JSON
+# ================================
 NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" \
     '.apiUrl |= sub("https://[^/]*"; "https://\($h)")')
 
 echo "$NEW_JSON" >> "$API_CONF"
 
 success "api.conf 已生成：$API_CONF"
+
 
 # 部署 SSH 密钥
 if [ -f "$TARGET_DIR/authorized_keys" ]; then

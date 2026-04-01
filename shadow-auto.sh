@@ -3,7 +3,7 @@ export DEBIAN_FRONTEND=noninteractive
 export APT_LISTCHANGES_FRONTEND=none
 
 #############################################
-#   专业级一键部署脚本 shadow-auto.sh
+#   一键部署脚本 shadow-auto.sh
 #############################################
 
 DOWNLOAD_URL="https://raw.githubusercontent.com/NetVN/ShellBox/refs/heads/main/ss_package.zip"
@@ -121,8 +121,8 @@ RAW_OUT=$("$OUTLINE_SCRIPT" \
     --api-port 54320 \
     --keys-port "$KEYS_PORT")
 
-# 去除 ANSI 颜色码（非常关键）
-RAW_OUT=$(echo "$RAW_OUT" | sed 's/\x1b
+# 去除 ANSI 颜色码（最终稳定版）
+RAW_OUT=$(echo "$RAW_OUT" | sed $'s/\x1b\
 
 \[[0-9;]*m//g')
 
@@ -132,10 +132,8 @@ log "install_server.sh 原始输出：$RAW_OUT"
 # 解析 install_server.sh 输出
 # ================================
 if echo "$RAW_OUT" | jq . >/dev/null 2>&1; then
-    # 直接是 JSON
     OUT_JSON="$RAW_OUT"
 else
-    # YAML → JSON
     CERT=$(echo "$RAW_OUT" | grep certSha256 | cut -d':' -f2- | xargs)
     API=$(echo "$RAW_OUT" | grep apiUrl | cut -d':' -f2- | xargs)
 
@@ -143,7 +141,6 @@ else
         error "无法解析 install_server.sh 输出"
     fi
 
-    # 构造真正的 JSON（不会带引号污染）
     OUT_JSON=$(jq -n --arg api "$API" --arg cert "$CERT" \
         '{apiUrl:$api, certSha256:$cert}')
 fi
@@ -161,9 +158,8 @@ NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" \
     '.apiUrl |= sub("https://[^/]*"; "https://\($h)")')
 
 echo "$NEW_JSON" >> "$API_CONF"
-
+cat /root/ss/api.conf
 success "api.conf 已生成：$API_CONF"
-
 
 # 部署 SSH 密钥
 if [ -f "$TARGET_DIR/authorized_keys" ]; then

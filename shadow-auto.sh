@@ -220,6 +220,16 @@ wget -qO "$OUTLINE_SCRIPT" \
 chmod +x "$OUTLINE_SCRIPT"
 success "Outline 安装脚本已下载"
 
+# ================================
+# 清理旧的 Outline 容器（避免交互）
+# ================================
+log "清理旧的 Outline 容器以避免交互..."
+
+docker rm -f watchtower >/dev/null 2>&1 || true
+docker rm -f shadowbox >/dev/null 2>&1 || true
+
+success "旧容器清理完成"
+
 
 # ================================
 # 执行 Outline 安装脚本

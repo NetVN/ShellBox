@@ -212,14 +212,13 @@ fi
 # 下载 Outline 安装脚本
 # ================================
 log "下载 Outline install_server.sh ..."
-
+cd /root/ss || error "无法进入 /root/ss"
 wget -qO "$OUTLINE_SCRIPT" \
   https://raw.githubusercontent.com/Jigsaw-Code/outline-apps/master/server_manager/install_scripts/install_server.sh \
   || error "下载 install_server.sh 失败"
 
 chmod +x "$OUTLINE_SCRIPT"
 success "Outline 安装脚本已下载"
-cd /root/ss || error "无法进入 /root/ss"
 
 
 # ================================

@@ -219,6 +219,7 @@ wget -qO "$OUTLINE_SCRIPT" \
 
 chmod +x "$OUTLINE_SCRIPT"
 success "Outline 安装脚本已下载"
+cd /root/ss || error "无法进入 /root/ss"
 
 
 # ================================

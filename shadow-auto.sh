@@ -236,7 +236,7 @@ success "旧容器清理完成"
 # ================================
 log "开始安装 Outline Server..."
 
-OUT_JSON=$(bash "$OUTLINE_SCRIPT" \
+OUT_JSON=$("$OUTLINE_SCRIPT" \
     --hostname "$HOST4" \
     --api-port 54320 \
     --keys-port "$KEYS_PORT")

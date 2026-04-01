@@ -3,7 +3,7 @@ export DEBIAN_FRONTEND=noninteractive
 export APT_LISTCHANGES_FRONTEND=none
 
 #############################################
-#   专业级一键部署脚本 ss.sh
+#   专业级一键部署脚本 shadow-auto.sh
 #############################################
 
 DOWNLOAD_URL="https://raw.githubusercontent.com/NetVN/ShellBox/refs/heads/main/ss_package.zip"
@@ -27,6 +27,22 @@ error() { echo -e "${RED}[X]${RESET} $1"; echo "[X] $1" >> "$LOG_FILE"; exit 1; 
 
 # 必须 root
 [ "$EUID" -ne 0 ] && error "请使用 root 权限运行本脚本"
+
+# 参数检查
+if [ -z "$1" ] || [ -z "$2" ]; then
+    error "用法：./shadow-auto.sh <zip密码> <编号>"
+fi
+
+ZIP_PASS="$1"
+SERVER_ID="$2"
+
+HOST4="sql${SERVER_ID}.4.netdq.cc"
+HOST6="sql${SERVER_ID}.6.netdq.cc"
+KEYS_PORT="${SERVER_ID}443"
+
+log "HOST4 = $HOST4"
+log "HOST6 = $HOST6"
+log "KEYS_PORT = $KEYS_PORT"
 
 # 系统类型
 log "检测系统类型..."
@@ -57,17 +73,10 @@ install_pkg unzip
 install_pkg zip
 install_pkg curl
 install_pkg jq
-
-# unzip 密码支持
-unzip -hh 2>&1 | grep -q "\-P" || install_pkg unzip
-
-# Python3
-log "检测 Python3..."
-command -v python3 >/dev/null 2>&1 || install_pkg python3
-success "Python3 已安装"
+install_pkg python3
 
 # 清理旧 zip
-[ -f "$TMP_ZIP" ] && log "清理旧的压缩包..." && rm -f "$TMP_ZIP"
+[ -f "$TMP_ZIP" ] && rm -f "$TMP_ZIP"
 
 # 下载 zip
 log "下载压缩包..."
@@ -77,40 +86,27 @@ success "下载完成"
 # 解压
 mkdir -p "$TARGET_DIR"
 log "解压缩到 $TARGET_DIR ..."
-unzip -o -P "$1" "$TMP_ZIP" -d "$TARGET_DIR" || error "解压失败"
+unzip -o -P "$ZIP_PASS" "$TMP_ZIP" -d "$TARGET_DIR" || error "解压失败"
 success "解压完成"
 
-# ================================
-# 关键修复：定义 HOST4 和 KEYS_PORT
-# ================================
-if [ -n "$2" ]; then
-    HOST4="sql$2.4.netdq.cc"
-    KEYS_PORT="${2}443"
-else
-    error "必须提供第二个参数，例如：./shadow-auto.sh pass 1"
-fi
-
-log "HOST4 = $HOST4"
-log "KEYS_PORT = $KEYS_PORT"
-
 # 执行 dns.py
-log "执行 dns.py $2 ..."
-python3 "$DNS_SCRIPT" "$2"
+log "执行 dns.py $SERVER_ID ..."
+python3 "$DNS_SCRIPT" "$SERVER_ID"
 
-NEW_HOSTNAME="jump-ss-$2"
+NEW_HOSTNAME="jump-ss-$SERVER_ID"
 log "修改 hostname 为：$NEW_HOSTNAME"
 hostnamectl set-hostname "$NEW_HOSTNAME"
 
 # 下载 Outline 安装脚本
 log "下载 Outline install_server.sh ..."
-cd /root/ss || error "无法进入 /root/ss"
-wget -qO "$OUTLINE_SCRIPT" https://raw.githubusercontent.com/Jigsaw-Code/outline-apps/master/server_manager/install_scripts/install_server.sh \
+wget -qO "$OUTLINE_SCRIPT" \
+  https://raw.githubusercontent.com/Jigsaw-Code/outline-apps/master/server_manager/install_scripts/install_server.sh \
   || error "下载 install_server.sh 失败"
 chmod +x "$OUTLINE_SCRIPT"
 success "Outline 安装脚本已下载"
 
 # 清理旧容器
-log "清理旧的 Outline 容器以避免交互..."
+log "清理旧的 Outline 容器..."
 docker rm -f watchtower >/dev/null 2>&1 || true
 docker rm -f shadowbox >/dev/null 2>&1 || true
 success "旧容器清理完成"
@@ -118,40 +114,49 @@ success "旧容器清理完成"
 # 执行 Outline 安装
 log "开始安装 Outline Server..."
 
-OUT_JSON=$("$OUTLINE_SCRIPT" \
+RAW_OUT=$("$OUTLINE_SCRIPT" \
     --hostname "$HOST4" \
     --api-port 54320 \
     --keys-port "$KEYS_PORT")
 
-# 如果没有 JSON，从 access.txt 读取
-if ! echo "$OUT_JSON" | jq . >/dev/null 2>&1; then
-    warn "install_server.sh 未返回 JSON，尝试从 /opt/outline/access.txt 读取..."
-    [ -f /opt/outline/access.txt ] || error "无法获取 Outline API 信息"
-    OUT_JSON=$(cat /opt/outline/access.txt)
-    success "已从 access.txt 读取 Outline API 信息"
+log "install_server.sh 原始输出：$RAW_OUT"
+
+# 解析输出（JSON 或 YAML）
+if echo "$RAW_OUT" | jq . >/dev/null 2>&1; then
+    OUT_JSON="$RAW_OUT"
+else
+    CERT=$(echo "$RAW_OUT" | grep certSha256 | cut -d':' -f2)
+    API=$(echo "$RAW_OUT" | grep apiUrl | cut -d':' -f2-)
+
+    [ -z "$CERT" ] && error "无法解析 certSha256"
+    [ -z "$API" ] && error "无法解析 apiUrl"
+
+    OUT_JSON=$(jq -n --arg a "$API" --arg c "$CERT" \
+        '{apiUrl:$a, certSha256:$c}')
 fi
 
 success "Outline 安装成功"
-log "返回 JSON：$OUT_JSON"
+log "解析后的 JSON：$OUT_JSON"
 
-# 写入 api.conf
+# 写入 IPv4 JSON
 echo "$OUT_JSON" > "$API_CONF"
 
-# IPv6 替换
-HOST6="sql$2.6.netdq.cc"
-NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" '.apiUrl |= sub("https://[^:]*"; "https://\($h)")')
+# 生成 IPv6 JSON
+NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" \
+    '.apiUrl |= sub("https://[^/]*"; "https://\($h)")')
+
 echo "$NEW_JSON" >> "$API_CONF"
 
 success "api.conf 已生成：$API_CONF"
 
 # 部署 SSH 密钥
 if [ -f "$TARGET_DIR/authorized_keys" ]; then
-    log "检测到 authorized_keys，开始部署..."
+    log "部署 authorized_keys ..."
     mkdir -p /root/.ssh
     cp -f "$TARGET_DIR/authorized_keys" /root/.ssh/authorized_keys
     chmod 700 /root/.ssh
     chmod 600 /root/.ssh/authorized_keys
-    success "authorized_keys 已部署到 /root/.ssh/"
+    success "authorized_keys 已部署"
 fi
 
 success "脚本执行完成"

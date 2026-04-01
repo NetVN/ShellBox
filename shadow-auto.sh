@@ -234,34 +234,38 @@ success "旧容器清理完成"
 # ================================
 # 执行 Outline 安装脚本
 # ================================
-if [ -n "$2" ]; then
-    HOST4="sql$2.4.netdq.cc"
-    KEYS_PORT="${2}443"   # ← 关键修改：keys-port = 第二变量 + 443
+log "开始安装 Outline Server..."
 
-    log "开始安装 Outline Server..."
+OUT_JSON=$(bash "$OUTLINE_SCRIPT" \
+    --hostname "$HOST4" \
+    --api-port 54320 \
+    --keys-port "$KEYS_PORT")
 
-    OUT_JSON=$(bash "$OUTLINE_SCRIPT" \
-        --hostname "$HOST4" \
-        --api-port 54320 \
-        --keys-port "$KEYS_PORT")
+# 如果 install_server.sh 没有返回 JSON，则从 access.txt 读取
+if ! echo "$OUT_JSON" | jq . >/dev/null 2>&1; then
+    warn "install_server.sh 未返回 JSON，尝试从 /opt/outline/access.txt 读取..."
 
-    echo "$OUT_JSON" | jq . >/dev/null 2>&1 || error "Outline 安装失败，未返回 JSON"
-
-    success "Outline 安装成功"
-    log "返回 JSON：$OUT_JSON"
-
-
-    # 写入第一行原始 JSON
-    echo "$OUT_JSON" > "$API_CONF"
-
-    # 替换 apiUrl 为 IPv6 域名
-    HOST6="sql$2.6.netdq.cc"
-    NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" '.apiUrl |= sub("https://[^:]*"; "https://\($h)")')
-
-    echo "$NEW_JSON" >> "$API_CONF"
-
-    success "api.conf 已生成：$API_CONF"
+    if [ -f /opt/outline/access.txt ]; then
+        OUT_JSON=$(cat /opt/outline/access.txt)
+        success "已从 access.txt 读取 Outline API 信息"
+    else
+        error "无法获取 Outline API 信息"
+    fi
 fi
+
+success "Outline 安装成功"
+log "返回 JSON：$OUT_JSON"
+
+# 写入第一行原始 JSON
+echo "$OUT_JSON" > "$API_CONF"
+
+# 替换 apiUrl 为 IPv6 域名
+HOST6="sql$2.6.netdq.cc"
+NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" '.apiUrl |= sub("https://[^:]*"; "https://\($h)")')
+
+echo "$NEW_JSON" >> "$API_CONF"
+
+success "api.conf 已生成：$API_CONF"
 
 # ================================
 # 部署 authorized_keys

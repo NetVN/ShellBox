@@ -101,7 +101,7 @@ install_pkg zip
 install_pkg curl
 install_pkg jq
 install_pkg python3
-
+install_pkg python3-pip
 #############################################
 # 下载并解压 ZIP
 #############################################

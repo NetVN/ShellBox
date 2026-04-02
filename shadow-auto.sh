@@ -183,7 +183,8 @@ log "解析后的 JSON：$OUT_JSON"
 #############################################
 # 写入 IPv4 JSON
 #############################################
-echo "$OUT_JSON" > "$API_CONF"
+echo "IPv4-API:" > "$API_CONF"
+echo "$OUT_JSON" >> "$API_CONF"
 
 #############################################
 # 生成 IPv6 JSON（保留端口）
@@ -193,9 +194,10 @@ PORT=$(echo "$OUT_JSON" | jq -r '.apiUrl' | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
 
 NEW_JSON=$(echo "$OUT_JSON" | jq --arg h "$HOST6" --arg p "$PORT" \
     '.apiUrl |= sub("https://[^/]*"; "https://\($h):\($p)")')
-
+echo "IPv6-API:" >> "$API_CONF"
 echo "$NEW_JSON" >> "$API_CONF"
-cat "$API_CONF"
+echo -e "\033[32m$(cat "$API_CONF")\033[0m"
+
 success "api.conf 已生成：$API_CONF"
 
 #############################################
